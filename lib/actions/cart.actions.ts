@@ -9,14 +9,49 @@ import { cartItemSchema, insertCartSchema } from '../validators';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@prisma/client';
 
-// Calculate cart prices
-const calcPrice = (items: CartItem[]) => {
+// Calculate cart prices with dynamic settings
+const calcPrice = async (
+  items: CartItem[],
+  promoCodeId?: string
+) => {
   const itemsPrice = round2(
-      items.reduce((acc, item) => acc + Number(item.price) * item.qty, 0)
-    ),
-    shippingPrice = round2(itemsPrice > 100 ? 0 : 10),
-    taxPrice = round2(0.15 * itemsPrice),
-    totalPrice = round2(itemsPrice + taxPrice + shippingPrice);
+    items.reduce((acc, item) => acc + Number(item.price) * item.qty, 0)
+  );
+
+  const [shippingSettings, taxSettings, promoCode] = await Promise.all([
+    prisma.shippingSettings.findFirst(),
+    prisma.taxSettings.findFirst(),
+    promoCodeId ? prisma.promoCode.findFirst({ where: { id: promoCodeId } }) : null,
+  ]);
+
+  const baseShippingCost = shippingSettings
+    ? Number(shippingSettings.baseShippingCost)
+    : 10;
+  const freeShippingThreshold = shippingSettings
+    ? Number(shippingSettings.freeShippingThreshold)
+    : 100;
+  const taxRate = taxSettings ? Number(taxSettings.taxRate) / 100 : 0.15;
+
+  let shippingPrice = itemsPrice > freeShippingThreshold ? 0 : baseShippingCost;
+  shippingPrice = round2(shippingPrice);
+
+  let discountedPrice = itemsPrice;
+  if (promoCode && promoCode.isActive) {
+    if (
+      !promoCode.minOrderAmount ||
+      itemsPrice >= Number(promoCode.minOrderAmount)
+    ) {
+      const discountValue = Number(promoCode.discountValue);
+      if (promoCode.discountType === 'percentage') {
+        discountedPrice = round2(itemsPrice * (1 - discountValue / 100));
+      } else {
+        discountedPrice = round2(Math.max(0, itemsPrice - discountValue));
+      }
+    }
+  }
+
+  const taxPrice = round2(discountedPrice * taxRate);
+  const totalPrice = round2(discountedPrice + taxPrice + shippingPrice);
 
   return {
     itemsPrice: itemsPrice.toFixed(2),
@@ -52,20 +87,18 @@ export async function addItemToCart(data: CartItem) {
       : null;
 
     if (!cart) {
-      // Create new cart object
+      const prices = await calcPrice([item]);
       const newCart = insertCartSchema.parse({
         userId: userId,
         items: [item],
         sessionCartId: sessionCartId,
-        ...calcPrice([item]),
+        ...prices,
       });
 
-      // Add to database
       await prisma.cart.create({
         data: newCart,
       });
 
-      // Revalidate product page
       revalidatePath(`/product/${product.slug}`);
 
       return {
@@ -73,38 +106,32 @@ export async function addItemToCart(data: CartItem) {
         message: `${product.name} added to cart`,
       };
     } else {
-      // Check if item is already in cart (consider variant)
       const existItem = (cart.items as CartItem[]).find(
         (x) => x.productId === item.productId && x.variantId === item.variantId
       );
 
       if (existItem) {
-        // Check stock (variant stock takes precedence)
         const available = variant ? variant.stock : product.stock;
         if (available < existItem.qty + 1) {
           throw new Error('Not enough stock');
         }
 
-        // Increase the quantity
         (cart.items as CartItem[]).find(
           (x) => x.productId === item.productId && x.variantId === item.variantId
         )!.qty = existItem.qty + 1;
       } else {
-        // If item does not exist in cart
-        // Check stock
         const available = variant ? variant.stock : product.stock;
         if (available < 1) throw new Error('Not enough stock');
 
-        // Add item to the cart.items
         cart.items.push(item);
       }
 
-      // Save to database
+      const prices = await calcPrice(cart.items as CartItem[]);
       await prisma.cart.update({
         where: { id: cart.id },
         data: {
           items: cart.items as Prisma.CartUpdateitemsInput[],
-          ...calcPrice(cart.items as CartItem[]),
+          ...prices,
         },
       });
 
@@ -143,10 +170,10 @@ export async function getMyCart() {
   return convertToPlainObject({
     ...cart,
     items: cart.items as CartItem[],
-    itemsPrice: cart.itemsPrice.toString(),
-    totalPrice: cart.totalPrice.toString(),
-    shippingPrice: cart.shippingPrice.toString(),
-    taxPrice: cart.taxPrice.toString(),
+    itemsPrice: Number(cart.itemsPrice),
+    totalPrice: Number(cart.totalPrice),
+    shippingPrice: Number(cart.shippingPrice),
+    taxPrice: Number(cart.taxPrice),
   });
 }
 
@@ -185,12 +212,12 @@ export async function removeItemFromCart(productId: string, variantId?: string) 
       )!.qty = exist.qty - 1;
     }
 
-    // Update cart in database
+    const prices = await calcPrice(cart.items as CartItem[]);
     await prisma.cart.update({
       where: { id: cart.id },
       data: {
         items: cart.items as Prisma.CartUpdateitemsInput[],
-        ...calcPrice(cart.items as CartItem[]),
+        ...prices,
       },
     });
 

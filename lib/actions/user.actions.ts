@@ -219,6 +219,13 @@ export async function getAllUsers({
     orderBy: { createdAt: 'desc' },
     take: limit,
     skip: (page - 1) * limit,
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      image: true,
+    },
   });
 
   const dataCount = await prisma.user.count();

@@ -18,6 +18,10 @@ const links = [
     href: '/admin/orders',
   },
   {
+    title: 'Settings',
+    href: '/admin/settings',
+  },
+  {
     title: 'Users',
     href: '/admin/users',
   },

@@ -1,8 +1,8 @@
-'use server';
+"use server";
 import { prisma } from '@/db/prisma';
 import { getUSPSTracking } from '@/lib/usps';
 import { revalidatePath } from 'next/cache';
-import { formatError } from '../utils';
+import { convertToPlainObject, formatError } from '../utils';
 
 function generateTrackingNumber(): string {
   const prefix = 'RMVK';
@@ -62,9 +62,11 @@ export async function getOrderTracking(orderId: string) {
       };
     }
 
+    const plainOrder = convertToPlainObject(order);
+
     return {
       success: true,
-      data: order,
+      data: plainOrder,
     };
   } catch (error) {
     return { success: false, message: formatError(error) };

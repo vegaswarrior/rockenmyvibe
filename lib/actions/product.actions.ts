@@ -24,7 +24,13 @@ export async function getLatestProducts() {
     orderBy: { createdAt: 'desc' },
   });
 
-  return convertToPlainObject(data);
+  return convertToPlainObject(
+    data.map((p) => ({
+      ...p,
+      price: Number(p.price),
+      rating: Number(p.rating),
+    }))
+  );
 }
 
 // Get single product by it's slug
@@ -57,7 +63,15 @@ export async function getProductById(productId: string) {
     where: { id: productId },
   });
 
-  return convertToPlainObject(data);
+  if (!data) return null;
+
+  const normalized = {
+    ...data,
+    price: Number(data.price),
+    rating: Number(data.rating),
+  };
+
+  return convertToPlainObject(normalized);
 }
 
 // Get all products
@@ -135,10 +149,15 @@ export async function getAllProducts({
   const dataCount = await prisma.product.count();
 
   return {
-    data,
+    data: data.map((p) => ({
+      ...p,
+      price: Number(p.price),
+      rating: Number(p.rating),
+    })),
     totalPages: Math.ceil(dataCount / limit),
   };
 }
+
 
 // Delete a product
 export async function deleteProduct(id: string) {
@@ -271,5 +290,11 @@ export async function getFeaturedProducts() {
     take: 4,
   });
 
-  return convertToPlainObject(data);
+  return convertToPlainObject(
+    data.map((p) => ({
+      ...p,
+      price: Number(p.price),
+      rating: Number(p.rating),
+    }))
+  );
 }

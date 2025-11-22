@@ -7,13 +7,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { deleteOrder, getAllOrders } from '@/lib/actions/order-actions';
-import { formatCurrency, formatDateTime, formatId } from '@/lib/utils';
+import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { Metadata } from 'next';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import Pagination from '@/components/shared/pagination';
 import DeleteDialog from '@/components/shared/delete-dialog';
 import { requireAdmin } from '@/lib/auth-guard';
+import Image from 'next/image';
 
 export const metadata: Metadata = {
   title: 'Admin Orders',
@@ -50,7 +51,7 @@ const AdminOrdersPage = async (props: {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
+              <TableHead>ITEMS</TableHead>
               <TableHead>DATE</TableHead>
               <TableHead>BUYER</TableHead>
               <TableHead>TOTAL</TableHead>
@@ -62,7 +63,25 @@ const AdminOrdersPage = async (props: {
           <TableBody>
             {orders.data.map((order) => (
               <TableRow key={order.id}>
-                <TableCell>{formatId(order.id)}</TableCell>
+                <TableCell>
+                  <div className='flex gap-2'>
+                    {order.orderitems && order.orderitems.length > 0 ? (
+                      order.orderitems.slice(0, 3).map((item: { image: string; name: string }, idx: number) => (
+                        <div key={idx} className='relative h-20 w-20 overflow-hidden rounded bg-gray-100'>
+                          {item.image ? (
+                            <Image src={item.image} alt={item.name} fill className='object-cover' />
+                          ) : (
+                            <div className='flex h-full w-full items-center justify-center bg-gray-200 text-sm text-gray-500'>
+                              No image
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <span className='text-sm text-gray-500'>No items</span>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell>
                   {formatDateTime(order.createdAt).dateTime}
                 </TableCell>

@@ -23,7 +23,7 @@ const Header = () => {
           <Link href='/about' className="m-2.5 hover:text-black hover:underline">About</Link>
           <Link href='/blog' className="m-2.5 hover:text-black hover:underline">Blog</Link>
           <Link href='/contact' className="m-2.5 hover:text-black hover:underline">Contact</Link>
-          <Link href='/products' className="m-2.5 hover:text-black hover:underline">Products</Link>
+          <Link href='/search' className="m-2.5 hover:text-black hover:underline">Products</Link>
         </div>
            <Menu />
       </div>

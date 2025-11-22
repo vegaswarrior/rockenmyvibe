@@ -30,7 +30,7 @@ const AddToCart = ({ cart, item }: { cart?: Cart; item: CartItem }) => {
         description: res.message,
       });
 
-      router.push('/cart');
+      router.push('/search');
     });
   };
 

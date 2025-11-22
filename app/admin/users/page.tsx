@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import Image from 'next/image';
 import { getAllUsers, deleteUser } from '@/lib/actions/user.actions';
 import {
   Table,
@@ -8,13 +9,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import Pagination from '@/components/shared/pagination';
 import { Badge } from '@/components/ui/badge';
 import DeleteDialog from '@/components/shared/delete-dialog';
 import { requireAdmin } from '@/lib/auth-guard';
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  image: string | null;
+}
 
 export const metadata: Metadata = {
   title: 'Admin Users',
@@ -51,7 +59,7 @@ const AdminUserPage = async (props: {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID</TableHead>
+              <TableHead>AVATAR</TableHead>
               <TableHead>NAME</TableHead>
               <TableHead>EMAIL</TableHead>
               <TableHead>ROLE</TableHead>
@@ -59,9 +67,23 @@ const AdminUserPage = async (props: {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.data.map((user) => (
+            {users.data.map((user: User) => (
               <TableRow key={user.id}>
-                <TableCell>{formatId(user.id)}</TableCell>
+                <TableCell>
+                  {user.image ? (
+                    <Image
+                      src={user.image}
+                      alt={user.name}
+                      width={80}
+                      height={80}
+                      className='rounded-lg object-cover'
+                    />
+                  ) : (
+                    <div className='w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-lg'>
+                      {user.name?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell>{user.name}</TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>

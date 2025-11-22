@@ -1,6 +1,7 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { getAllProducts, deleteProduct } from '@/lib/actions/product.actions';
-import { formatCurrency, formatId } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -13,6 +14,16 @@ import {
 import Pagination from '@/components/shared/pagination';
 import DeleteDialog from '@/components/shared/delete-dialog';
 import { requireAdmin } from '@/lib/auth-guard';
+
+interface Product {
+  id: string;
+  name: string;
+  price: number | string;
+  category: string;
+  stock: number;
+  rating: number | string;
+  images: string[];
+}
 
 const AdminProductsPage = async (props: {
   searchParams: Promise<{
@@ -59,7 +70,7 @@ const AdminProductsPage = async (props: {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>ID</TableHead>
+            <TableHead>PRODUCT</TableHead>
             <TableHead>NAME</TableHead>
             <TableHead className='text-right'>PRICE</TableHead>
             <TableHead>CATEGORY</TableHead>
@@ -69,9 +80,23 @@ const AdminProductsPage = async (props: {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {products.data.map((product) => (
+          {products.data.map((product: Product) => (
             <TableRow key={product.id}>
-              <TableCell>{formatId(product.id)}</TableCell>
+              <TableCell>
+                {product.images && product.images.length > 0 ? (
+                  <Image
+                    src={product.images[0]}
+                    alt={product.name}
+                    width={80}
+                    height={80}
+                    className='rounded-lg object-cover'
+                  />
+                ) : (
+                  <div className='w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center text-gray-500 text-sm'>
+                    No Image
+                  </div>
+                )}
+              </TableCell>
               <TableCell>{product.name}</TableCell>
               <TableCell className='text-right'>
                 {formatCurrency(product.price)}

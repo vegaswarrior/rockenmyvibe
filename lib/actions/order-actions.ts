@@ -107,7 +107,21 @@ export async function getOrderById(orderId: string) {
     include: { orderitems: true, user: { select: { name: true, email: true } } },
   });
 
-  return convertToPlainObject(data);
+  if (!data) return null;
+
+  const convertedData = {
+    ...data,
+    totalPrice: Number(data.totalPrice),
+    itemsPrice: Number(data.itemsPrice),
+    shippingPrice: Number(data.shippingPrice),
+    taxPrice: Number(data.taxPrice),
+    orderitems: data.orderitems.map((item) => ({
+      ...item,
+      price: Number(item.price),
+    })),
+  };
+
+  return convertToPlainObject(convertedData);
 }
 
 // Create new PayPal order
@@ -226,11 +240,28 @@ export async function updateOrderToPaid({
     isShippingAddress(updatedOrder.shippingAddress) &&
     isPaymentResult(updatedOrder.paymentResult)
   ) {
+    const shippingAddress = updatedOrder.shippingAddress as ShippingAddress;
+    const paymentResult = updatedOrder.paymentResult as PaymentResult;
+
+    const normalizedOrder = {
+      ...updatedOrder,
+      totalPrice: Number(updatedOrder.totalPrice),
+      itemsPrice: Number(updatedOrder.itemsPrice),
+      shippingPrice: Number(updatedOrder.shippingPrice),
+      taxPrice: Number(updatedOrder.taxPrice),
+      orderitems: updatedOrder.orderitems.map((item) => ({
+        ...item,
+        price: Number(item.price),
+      })),
+      shippingAddress,
+      paymentResult,
+    };
+
     sendPurchaseReceipt({
       order: {
-        ...updatedOrder,
-        shippingAddress: updatedOrder.shippingAddress,
-        paymentResult: updatedOrder.paymentResult,
+        ...normalizedOrder,
+        shippingAddress: normalizedOrder.shippingAddress,
+        paymentResult: normalizedOrder.paymentResult,
       },
     }).catch((error) => {
       console.error('Failed to send purchase receipt:', error);
@@ -254,7 +285,15 @@ export async function getMyOrders({ limit = PAGE_SIZE, page }: { limit?: number;
 
   const dataCount = await prisma.order.count({ where: { userId: session?.user?.id } });
 
-  return { data, totalPages: Math.ceil(dataCount / limit) };
+  const convertedData = data.map((order) => ({
+    ...order,
+    totalPrice: Number(order.totalPrice),
+    itemsPrice: Number(order.itemsPrice),
+    shippingPrice: Number(order.shippingPrice),
+    taxPrice: Number(order.taxPrice),
+  }));
+
+  return { data: convertedData, totalPages: Math.ceil(dataCount / limit) };
 }
 
 // Order summary
@@ -307,12 +346,12 @@ export async function getAllOrders({
     orderBy: { createdAt: 'desc' },
     take: limit,
     skip: (page - 1) * limit,
-    include: { user: { select: { name: true } } },
+    include: { user: { select: { name: true } }, orderitems: { select: { image: true, name: true } } },
   });
 
   const dataCount = await prisma.order.count();
 
-  return { data, totalPages: Math.ceil(dataCount / limit) };
+  return { data: convertToPlainObject(data), totalPages: Math.ceil(dataCount / limit) };
 }
 
 // Delete an order
@@ -355,4 +394,60 @@ export async function deliverOrder(orderId: string) {
   } catch (error) {
     return { success: false, message: formatError(error) };
   }
+}
+
+export async function getRevenueByPeriod(
+  period: 'day' | 'month' | 'year',
+  filterDate?: { year?: number; month?: number }
+) {
+  const queryMap = {
+    day: `SELECT to_char("createdAt", 'YYYY-MM-DD') as "date", 
+             to_char("createdAt", 'DD Mon YYYY') as "displayDate",
+             sum("totalPrice") as "totalRevenue",
+             count(*) as "orderCount"
+          FROM "Order"
+          WHERE "isPaid" = true
+          ${filterDate?.year && filterDate?.month ? `AND EXTRACT(YEAR FROM "createdAt") = ${filterDate.year} AND EXTRACT(MONTH FROM "createdAt") = ${filterDate.month}` : filterDate?.year ? `AND EXTRACT(YEAR FROM "createdAt") = ${filterDate.year}` : ''}
+          GROUP BY to_char("createdAt", 'YYYY-MM-DD'), to_char("createdAt", 'DD Mon YYYY')
+          ORDER BY "date" DESC`,
+
+    month: `SELECT to_char("createdAt", 'YYYY-MM') as "date",
+               to_char("createdAt", 'Mon YYYY') as "displayDate",
+               sum("totalPrice") as "totalRevenue",
+               count(*) as "orderCount"
+            FROM "Order"
+            WHERE "isPaid" = true
+            ${filterDate?.year ? `AND EXTRACT(YEAR FROM "createdAt") = ${filterDate.year}` : ''}
+            GROUP BY to_char("createdAt", 'YYYY-MM'), to_char("createdAt", 'Mon YYYY')
+            ORDER BY "date" DESC`,
+
+    year: `SELECT to_char("createdAt", 'YYYY') as "date",
+              to_char("createdAt", 'YYYY') as "displayDate",
+              sum("totalPrice") as "totalRevenue",
+              count(*) as "orderCount"
+           FROM "Order"
+           WHERE "isPaid" = true
+           GROUP BY to_char("createdAt", 'YYYY')
+           ORDER BY "date" DESC`,
+  };
+
+  const rawData = await prisma.$queryRawUnsafe<
+    Array<{
+      date: string;
+      displayDate: string;
+      totalRevenue: Prisma.Decimal;
+      orderCount: number;
+    }>
+  >(queryMap[period]);
+
+  const data = rawData.map((item) => ({
+    date: item.date,
+    displayDate: item.displayDate,
+    totalRevenue: Number(item.totalRevenue),
+    orderCount: item.orderCount,
+  }));
+
+  const totalRevenue = data.reduce((sum, item) => sum + item.totalRevenue, 0);
+
+  return { data, totalRevenue };
 }

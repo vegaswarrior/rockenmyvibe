@@ -6,14 +6,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getOrderSummary } from '@/lib/actions/order-actions';
-import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
-import { BadgeDollarSign, Barcode, CreditCard, Users } from 'lucide-react';
+import { formatCurrency, formatDateTime, convertToPlainObject } from '@/lib/utils';
+import { TrendingUp } from 'lucide-react';
 import { Metadata } from 'next';
 import Link from 'next/link';
 import Charts from './charts';
 import { requireAdmin } from '@/lib/auth-guard';
+import DashboardOverview from './dashboard-overview';
 
 export const metadata: Metadata = {
   title: 'Admin Dashboard',
@@ -23,106 +23,80 @@ const AdminOverviewPage = async () => {
   await requireAdmin();
 
   const summary = await getOrderSummary();
+  const serializedSummary = convertToPlainObject(summary);
 
   return (
-    <div className='space-y-2'>
-      <h1 className='h2-bold'>Dashboard</h1>
-      <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-4'>
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Total Revenue</CardTitle>
-            <BadgeDollarSign />
-          </CardHeader>
-          <CardContent>
-            <div className='text-2xl font-bold'>
-              {formatCurrency(
-                summary.totalSales._sum.totalPrice?.toString() || 0
-              )}
+    <div className='w-full min-h-screen px-4 py-8 md:px-8'>
+      <div className='max-w-7xl mx-auto space-y-8'>
+        <div>
+          <h1 className='text-4xl md:text-5xl font-bold text-white mb-2'>Dashboard</h1>
+          <p className='text-gray-300'>Monitor your store performance and recent activity</p>
+        </div>
+
+        <DashboardOverview summary={serializedSummary} />
+
+        <div className='grid gap-8 lg:grid-cols-7'>
+          <div className='lg:col-span-4 backdrop-blur-md bg-white/10 border border-white/20 rounded-xl p-8 shadow-lg'>
+            <div className='flex items-center justify-between mb-8'>
+              <div>
+                <h3 className='text-2xl font-bold text-white'>Sales Overview</h3>
+                <p className='text-sm text-gray-400 mt-1'>Monthly revenue trend</p>
+              </div>
+              <TrendingUp className='w-6 h-6 text-violet-400' />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Sales</CardTitle>
-            <CreditCard />
-          </CardHeader>
-          <CardContent>
-            <div className='text-2xl font-bold'>
-              {formatNumber(summary.ordersCount)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Customers</CardTitle>
-            <Users />
-          </CardHeader>
-          <CardContent>
-            <div className='text-2xl font-bold'>
-              {formatNumber(summary.usersCount)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
-            <CardTitle className='text-sm font-medium'>Products</CardTitle>
-            <Barcode />
-          </CardHeader>
-          <CardContent>
-            <div className='text-2xl font-bold'>
-              {formatNumber(summary.productsCount)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-7'>
-        <Card className='col-span-4'>
-          <CardHeader>
-            <CardTitle>Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
             <Charts
               data={{
                 salesData: summary.salesData,
               }}
             />
-          </CardContent>
-        </Card>
-        <Card className='col-span-3'>
-          <CardHeader>
-            <CardTitle>Recent Sales</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>BUYER</TableHead>
-                  <TableHead>DATE</TableHead>
-                  <TableHead>TOTAL</TableHead>
-                  <TableHead>ACTIONS</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.latestSales.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell>
-                      {order?.user?.name ? order.user.name : 'Deleted User'}
-                    </TableCell>
-                    <TableCell>
-                      {formatDateTime(order.createdAt).dateOnly}
-                    </TableCell>
-                    <TableCell>{formatCurrency(order.totalPrice)}</TableCell>
-                    <TableCell>
-                      <Link href={`/order/${order.id}`}>
-                        <span className='px-2'>Details</span>
-                      </Link>
-                    </TableCell>
+          </div>
+
+          <div className='lg:col-span-3 backdrop-blur-md bg-white/10 border border-white/20 rounded-xl p-8 shadow-lg'>
+            <div className='flex items-center justify-between mb-8'>
+              <div>
+                <h3 className='text-2xl font-bold text-white'>Recent Sales</h3>
+                <p className='text-sm text-gray-400 mt-1'>Latest transactions</p>
+              </div>
+            </div>
+            <div className='overflow-x-auto'>
+              <Table>
+                <TableHeader>
+                  <TableRow className='border-white/10 hover:bg-white/5'>
+                    <TableHead className='text-gray-300'>BUYER</TableHead>
+                    <TableHead className='text-gray-300'>DATE</TableHead>
+                    <TableHead className='text-gray-300'>TOTAL</TableHead>
+                    <TableHead className='text-gray-300'>ACTION</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {summary.latestSales.slice(0, 8).map((order) => (
+                    <TableRow key={order.id} className='border-white/10 hover:bg-white/5 transition-colors'>
+                      <TableCell className='text-gray-300 font-medium'>
+                        {order?.user?.name ? order.user.name : 'Deleted User'}
+                      </TableCell>
+                      <TableCell className='text-gray-400 text-sm'>
+                        {formatDateTime(order.createdAt).dateOnly}
+                      </TableCell>
+                      <TableCell className='text-white font-semibold'>
+                        {formatCurrency(order.totalPrice)}
+                      </TableCell>
+                      <TableCell>
+                        <Link href={`/order/${order.id}`}>
+                          <span className='text-violet-400 hover:text-violet-300 text-sm font-medium transition-colors'>View</span>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <Link href='/admin/orders'>
+              <button className='w-full mt-6 py-2 px-4 text-sm font-medium text-white border border-white/20 rounded-lg hover:bg-white/10 transition-colors'>
+                View All Sales
+              </button>
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );
