@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Check, Loader } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createOrder } from '@/lib/actions/order-actions';
+import { applyPromoCodeToCart } from '@/lib/actions/cart.actions';
 import { paymentMethodSchema } from '@/lib/validators';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -27,6 +28,7 @@ import {
   FormLabel,
 } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 type SavedPaymentMethod = {
   id: string;
@@ -41,6 +43,7 @@ const PlaceOrderForm = ({ preferredPaymentMethod }: { preferredPaymentMethod: st
   const router = useRouter();
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
+  const [isApplyingPromo, startApplyPromo] = useTransition();
   const [savedMethods, setSavedMethods] = useState<SavedPaymentMethod[]>([]);
   const [selectedMethodId, setSelectedMethodId] = useState<string>('');
   const [isLoadingMethods, setIsLoadingMethods] = useState(true);
@@ -49,6 +52,7 @@ const PlaceOrderForm = ({ preferredPaymentMethod }: { preferredPaymentMethod: st
     resolver: zodResolver(paymentMethodSchema),
     defaultValues: {
       type: preferredPaymentMethod || DEFAULT_PAYMENT_METHOD,
+      promoCode: '',
     },
   });
 
@@ -141,29 +145,50 @@ const PlaceOrderForm = ({ preferredPaymentMethod }: { preferredPaymentMethod: st
             onSubmit={form.handleSubmit(handleSubmit)}
             className='w-full'
           >
-            {!selectedMethodId && (
-              <FormField
-                control={form.control}
-                name='type'
-                render={({ field }) => (
-                  <FormItem className='mb-4'>
-                    <FormLabel>Payment Method</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder='Select payment method' />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value='PayPal'>PayPal</SelectItem>
-                        <SelectItem value='Stripe'>Stripe</SelectItem>
-                        <SelectItem value='Bank Transfer'>Bank Transfer</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </FormItem>
-                )}
-              />
-            )}
+            <FormField
+              control={form.control}
+              name='promoCode'
+              render={({ field }) => (
+                <FormItem className='mb-4'>
+                  <FormLabel>Promo Code</FormLabel>
+                  <div className='flex gap-2'>
+                    <FormControl>
+                      <Input
+                        placeholder='Enter promo code (optional)'
+                        {...field}
+                      />
+                    </FormControl>
+                    <Button
+                      type='button'
+                      disabled={isApplyingPromo || !field.value}
+                      onClick={() => {
+                        const code = field.value?.trim();
+                        if (!code) return;
+
+                        startApplyPromo(async () => {
+                          const res = await applyPromoCodeToCart(code);
+
+                          toast({
+                            variant: res.success ? 'default' : 'destructive',
+                            description: res.message,
+                          });
+
+                          if (res.success) {
+                            router.refresh();
+                          }
+                        });
+                      }}
+                    >
+                      {isApplyingPromo ? (
+                        <Loader className='w-4 h-4 animate-spin' />
+                      ) : (
+                        'Apply'
+                      )}
+                    </Button>
+                  </div>
+                </FormItem>
+              )}
+            />
 
             <PlaceOrderButton />
           </form>

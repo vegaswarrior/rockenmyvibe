@@ -1,7 +1,8 @@
-'use server';
+"use server";
 
 import { prisma } from '@/db/prisma';
 import { formatError } from '../utils';
+import { revalidatePath } from 'next/cache';
 
 export async function getSettings() {
   try {
@@ -359,5 +360,65 @@ export async function calculateUSPSShippingRate(
       message: formatError(error),
       rate: null,
     };
+  }
+}
+
+// Create or update a promo code and link it to a specific product
+export async function addPromoToProduct(params: {
+  productId: string;
+  code: string;
+  description?: string;
+  discountType: string;
+  discountValue: number;
+  minOrderAmount?: number;
+  maxUses?: number;
+  expiresAt?: Date;
+}) {
+  try {
+    const upperCode = params.code.toUpperCase();
+
+    // Create or update the promo code itself
+    const promo = await prisma.promoCode.upsert({
+      where: { code: upperCode },
+      update: {
+        description: params.description,
+        discountType: params.discountType,
+        discountValue: params.discountValue,
+        minOrderAmount: params.minOrderAmount,
+        maxUses: params.maxUses,
+        expiresAt: params.expiresAt,
+        isActive: true,
+      },
+      create: {
+        code: upperCode,
+        description: params.description,
+        discountType: params.discountType,
+        discountValue: params.discountValue,
+        minOrderAmount: params.minOrderAmount,
+        maxUses: params.maxUses,
+        expiresAt: params.expiresAt,
+      },
+    });
+
+    // Link promo to product
+    await prisma.productPromo.upsert({
+      where: {
+        productId_promoCodeId: {
+          productId: params.productId,
+          promoCodeId: promo.id,
+        },
+      },
+      update: {},
+      create: {
+        productId: params.productId,
+        promoCodeId: promo.id,
+      },
+    });
+
+    revalidatePath('/admin/products');
+
+    return { success: true, message: 'Promo code added to product' };
+  } catch (error) {
+    return { success: false, message: formatError(error) };
   }
 }

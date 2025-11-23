@@ -1,5 +1,4 @@
 'use client';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
@@ -10,12 +9,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { formatCurrency, formatDateTime, formatId } from '@/lib/utils';
+import { formatCurrency, formatId } from '@/lib/utils';
 import { Order } from '@/types';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
-import { useTransition } from 'react';
+import { useTransition, useState } from 'react';
 import {
   PayPalButtons,
   PayPalScriptProvider,
@@ -26,7 +25,11 @@ import {
   approvePayPalOrder,
   updateOrderToPaidCOD,
   deliverOrder,
+  updateOrderShippingAddress,
 } from '@/lib/actions/order-actions';
+import { ShippingAddress } from '@/types';
+import { Input } from '@/components/ui/input';
+import { useRouter } from 'next/navigation';
 import StripePayment from './stripe-payment';
 
 const OrderDetailsTable = ({
@@ -51,9 +54,12 @@ const OrderDetailsTable = ({
     paymentMethod,
     isDelivered,
     isPaid,
-    paidAt,
-    deliveredAt,
   } = order;
+
+  const [editAddress, setEditAddress] = useState<ShippingAddress>(shippingAddress);
+  const [isSavingAddress, startSaveAddress] = useTransition();
+  const [showEditAddress, setShowEditAddress] = useState(false);
+  const router = useRouter();
 
   const { toast } = useToast();
 
@@ -144,19 +150,6 @@ const OrderDetailsTable = ({
       <h1 className='py-4 text-2xl'>Order {formatId(id)}</h1>
       <div className='grid md:grid-cols-3 md:gap-5'>
         <div className='col-span-2 space-4-y overlow-x-auto'>
-          <Card>
-            <CardContent className='p-4 gap-4'>
-              <h2 className='text-xl pb-4'>Payment Method</h2>
-              <p className='mb-2'>{paymentMethod}</p>
-              {isPaid ? (
-                <Badge variant='secondary'>
-                  Paid at {formatDateTime(paidAt!).dateTime}
-                </Badge>
-              ) : (
-                <Badge variant='destructive'>Not paid</Badge>
-              )}
-            </CardContent>
-          </Card>
           <Card className='my-2'>
             <CardContent className='p-4 gap-4'>
               <h2 className='text-xl pb-4'>Shipping Address</h2>
@@ -165,12 +158,84 @@ const OrderDetailsTable = ({
                 {shippingAddress.streetAddress}, {shippingAddress.city}
                 {shippingAddress.postalCode}, {shippingAddress.country}
               </p>
-              {isDelivered ? (
-                <Badge variant='secondary'>
-                  Delivered at {formatDateTime(deliveredAt!).dateTime}
-                </Badge>
-              ) : (
-                <Badge variant='destructive'>Not Delivered</Badge>
+
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                onClick={() => setShowEditAddress((prev) => !prev)}
+              >
+                {showEditAddress ? 'Cancel' : 'Edit Shipping Address'}
+              </Button>
+
+              {showEditAddress && (
+                <div className='mt-4 space-y-2'>
+                  <h3 className='font-semibold text-sm'>Update Shipping Address</h3>
+                  <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
+                    <Input
+                      placeholder='Full Name'
+                      value={editAddress.fullName}
+                      onChange={(e) =>
+                        setEditAddress({ ...editAddress, fullName: e.target.value })
+                      }
+                    />
+                    <Input
+                      placeholder='Street Address'
+                      value={editAddress.streetAddress}
+                      onChange={(e) =>
+                        setEditAddress({
+                          ...editAddress,
+                          streetAddress: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      placeholder='City'
+                      value={editAddress.city}
+                      onChange={(e) =>
+                        setEditAddress({ ...editAddress, city: e.target.value })
+                      }
+                    />
+                    <Input
+                      placeholder='Postal Code'
+                      value={editAddress.postalCode}
+                      onChange={(e) =>
+                        setEditAddress({
+                          ...editAddress,
+                          postalCode: e.target.value,
+                        })
+                      }
+                    />
+                    <Input
+                      placeholder='Country'
+                      value={editAddress.country}
+                      onChange={(e) =>
+                        setEditAddress({ ...editAddress, country: e.target.value })
+                      }
+                    />
+                  </div>
+                  <Button
+                    type='button'
+                    size='sm'
+                    disabled={isSavingAddress}
+                    onClick={() =>
+                      startSaveAddress(async () => {
+                        const res = await updateOrderShippingAddress(id, editAddress);
+                        toast({
+                          variant: res.success ? 'default' : 'destructive',
+                          description: res.message,
+                        });
+
+                        if (res.success) {
+                          setShowEditAddress(false);
+                          router.refresh();
+                        }
+                      })
+                    }
+                  >
+                    {isSavingAddress ? 'Saving...' : 'Save Address'}
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

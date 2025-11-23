@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
         hostname: 'utfs.io',
         port: '',
       },
+      {
+        protocol: 'https',
+        hostname: 'files.cdn.printful.com',
+        port: '',
+      },
     ],
   },
 };

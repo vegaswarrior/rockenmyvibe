@@ -89,6 +89,7 @@ export const shippingAddressSchema = z.object({
 export const paymentMethodSchema = z
   .object({
     type: z.string().min(1, 'Payment method is required'),
+    promoCode: z.string().optional(),
   })
   .refine((data) => PAYMENT_METHODS.includes(data.type), {
     path: ['type'],

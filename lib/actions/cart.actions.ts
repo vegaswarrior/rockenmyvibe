@@ -21,7 +21,11 @@ const calcPrice = async (
   const [shippingSettings, taxSettings, promoCode] = await Promise.all([
     prisma.shippingSettings.findFirst(),
     prisma.taxSettings.findFirst(),
-    promoCodeId ? prisma.promoCode.findFirst({ where: { id: promoCodeId } }) : null,
+    promoCodeId
+      ? prisma.promoCode.findFirst({
+          where: { id: promoCodeId },
+        })
+      : null,
   ]);
 
   const baseShippingCost = shippingSettings
@@ -42,6 +46,7 @@ const calcPrice = async (
       itemsPrice >= Number(promoCode.minOrderAmount)
     ) {
       const discountValue = Number(promoCode.discountValue);
+
       if (promoCode.discountType === 'percentage') {
         discountedPrice = round2(itemsPrice * (1 - discountValue / 100));
       } else {
@@ -54,12 +59,55 @@ const calcPrice = async (
   const totalPrice = round2(discountedPrice + taxPrice + shippingPrice);
 
   return {
-    itemsPrice: itemsPrice.toFixed(2),
-    shippingPrice: shippingPrice.toFixed(2),
-    taxPrice: taxPrice.toFixed(2),
-    totalPrice: totalPrice.toFixed(2),
+    itemsPrice,
+    shippingPrice,
+    taxPrice,
+    totalPrice,
   };
 };
+
+export async function applyPromoCodeToCart(code: string) {
+  try {
+    const sessionCartId = (await cookies()).get('sessionCartId')?.value;
+    if (!sessionCartId) throw new Error('Cart session not found');
+
+    const cart = await getMyCart();
+    if (!cart || cart.items.length === 0) {
+      throw new Error('Your cart is empty');
+    }
+
+    const promoCode = await prisma.promoCode.findFirst({
+      where: {
+        code: code.toUpperCase(),
+        isActive: true,
+      },
+    });
+
+    if (!promoCode) {
+      throw new Error('Promo code is invalid or inactive');
+    }
+
+    const prices = await calcPrice(cart.items as CartItem[], promoCode.id);
+
+    await prisma.cart.update({
+      where: { id: cart.id },
+      data: {
+        items: cart.items as Prisma.CartUpdateitemsInput[],
+        ...prices,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Promo code applied',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: formatError(error),
+    };
+  }
+}
 
 export async function addItemToCart(data: CartItem) {
   try {

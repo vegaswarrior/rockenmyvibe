@@ -9,8 +9,9 @@ type Variant = {
   id: string;
   sku?: string | null;
   price: string | number | Decimal;
-  stock: number;
+  stock?: number;
   images?: string[];
+  printfulExternalId?: string | null;
   color?: { id: string; name: string; slug: string; hex?: string | null; createdAt?: Date; active?: boolean } | null;
   size?: { id: string; name: string; slug: string; createdAt?: Date; active?: boolean } | null;
 };
@@ -27,10 +28,12 @@ export default function VariantSelector({
   variants,
   product,
   cart,
+  onImageChange,
 }: {
   variants: Variant[];
   product: Product;
   cart?: Cart;
+  onImageChange?: (url: string | undefined) => void;
 }) {
   const [mounted, setMounted] = useState(false);
   const [selectedColor, setSelectedColor] = useState<string | undefined>();
@@ -88,7 +91,7 @@ export default function VariantSelector({
     slug: product.slug,
     qty: 1,
     image: image || '',
-    price: (selectedVariant?.price ?? product.price).toString(),
+    price: Number(selectedVariant?.price ?? product.price),
     variantId: selectedVariant?.id,
     variantColor: selectedVariant?.color?.name,
     variantSize: selectedVariant?.size?.name,
@@ -104,6 +107,12 @@ export default function VariantSelector({
   const shouldShowButton = hasRequiredSelections();
   const shouldShowMessage = !hasRequiredSelections();
 
+  useEffect(() => {
+    if (onImageChange) {
+      onImageChange(image);
+    }
+  }, [image, onImageChange]);
+
   if (!mounted) {
     return null;
   }
@@ -114,7 +123,7 @@ export default function VariantSelector({
         <div>
           <label className='block text-sm font-medium mb-1'>Color</label>
           <select
-            className='w-full border rounded px-2 py-1'
+            className='w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             value={selectedColor || ''}
             onChange={(e) => setSelectedColor(e.target.value || undefined)}
           >
@@ -131,7 +140,7 @@ export default function VariantSelector({
         <div>
           <label className='block text-sm font-medium mb-1'>Size</label>
           <select
-            className='w-full border rounded px-2 py-1'
+            className='w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
             value={selectedSize || ''}
             onChange={(e) => setSelectedSize(e.target.value || undefined)}
           >

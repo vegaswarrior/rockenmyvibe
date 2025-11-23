@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { getAllProducts, deleteProduct } from '@/lib/actions/product.actions';
+import { getAllProducts, deleteProduct, syncProductsFromPrintful } from '@/lib/actions/product.actions';
+import ProductPromoDialog from '@/components/admin/product-promo-dialog';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,7 +22,6 @@ interface Product {
   price: number | string;
   category: string;
   stock: number;
-  rating: number | string;
   images: string[];
 }
 
@@ -46,6 +46,11 @@ const AdminProductsPage = async (props: {
     category,
   });
 
+  async function syncPrintfulAction() {
+    'use server';
+    await syncProductsFromPrintful();
+  }
+
   return (
     <div className='space-y-2'>
       <div className='flex-between'>
@@ -62,9 +67,14 @@ const AdminProductsPage = async (props: {
             </div>
           )}
         </div>
-        <Button asChild variant='default'>
-          <Link href='/admin/products/create'>Create Product</Link>
-        </Button>
+        <div className='flex gap-2'>
+          <form action={syncPrintfulAction}>
+            <Button type='submit' variant='outline'>Sync from Printful</Button>
+          </form>
+          <Button asChild variant='default'>
+            <Link href='/admin/products/create'>Create Product</Link>
+          </Button>
+        </div>
       </div>
 
       <Table>
@@ -75,7 +85,7 @@ const AdminProductsPage = async (props: {
             <TableHead className='text-right'>PRICE</TableHead>
             <TableHead>CATEGORY</TableHead>
             <TableHead>STOCK</TableHead>
-            <TableHead>RATING</TableHead>
+            <TableHead>PROMO CODES</TableHead>
             <TableHead className='w-[100px]'>ACTIONS</TableHead>
           </TableRow>
         </TableHeader>
@@ -103,7 +113,9 @@ const AdminProductsPage = async (props: {
               </TableCell>
               <TableCell>{product.category}</TableCell>
               <TableCell>{product.stock}</TableCell>
-              <TableCell>{product.rating}</TableCell>
+              <TableCell>
+                <ProductPromoDialog productId={product.id} />
+              </TableCell>
               <TableCell className='flex gap-1'>
                 <Button asChild variant='outline' size='sm'>
                   <Link href={`/admin/products/${product.id}`}>Edit</Link>

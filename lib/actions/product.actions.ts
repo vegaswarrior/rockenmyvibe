@@ -1,4 +1,4 @@
-'use server';
+"use server";
 import { prisma } from '@/db/prisma';
 import { convertToPlainObject, formatError } from '../utils';
 import { LATEST_PRODUCTS_LIMIT, PAGE_SIZE } from '../constants';
@@ -6,6 +6,25 @@ import { revalidatePath } from 'next/cache';
 import { insertProductSchema, updateProductSchema } from '../validators';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { fetchPrintfulStoreProducts, fetchPrintfulStoreProduct } from '../printful';
+
+type PrintfulVariantOption = {
+  name?: string;
+  type?: string;
+  value?: string;
+};
+
+type PrintfulVariant = {
+  id: string | number;
+  sku?: string | null;
+  retail_price?: string | number | null;
+  name?: string | null;
+  product?: {
+    thumbnail_url?: string;
+    options?: PrintfulVariantOption[];
+  };
+  files?: { preview_url?: string }[];
+};
 
 // Type for variant creation
 type VariantInput = {
@@ -31,6 +50,188 @@ export async function getLatestProducts() {
       rating: Number(p.rating),
     }))
   );
+}
+
+// Sync products from Printful Store API into local Product/ProductVariant tables
+export async function syncProductsFromPrintful() {
+  try {
+    type PrintfulStoreItem = {
+      id: number | string;
+      name?: string;
+      thumbnail_url?: string;
+      retail_price?: string | number | null;
+    };
+
+    const storeProducts = (await fetchPrintfulStoreProducts()) as PrintfulStoreItem[];
+
+    for (const p of storeProducts) {
+      const detailed = (await fetchPrintfulStoreProduct(p.id)) as {
+        sync_product?: {
+          name?: string;
+          type?: string;
+          thumbnail_url?: string;
+          retail_price?: string | number | null;
+          description?: string | null;
+        };
+        sync_variants?: PrintfulVariant[];
+      };
+
+      const name: string = detailed?.sync_product?.name ?? p.name ?? 'Untitled Product';
+      const slugBase = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      const slug = slugBase || `printful-product-${p.id}`;
+
+      const category: string =
+        (detailed?.sync_product?.type as string | undefined) || 'Printful';
+
+      const imageUrl: string | undefined =
+        detailed?.sync_product?.thumbnail_url || p.thumbnail_url;
+
+      const syncVariants: PrintfulVariant[] =
+        (detailed?.sync_variants as PrintfulVariant[] | undefined) ?? [];
+
+      const firstVariantPrice = syncVariants.length
+        ? Number(syncVariants[0].retail_price ?? 0)
+        : 0;
+
+      const retailPrice = Number(
+        detailed?.sync_product?.retail_price ?? p.retail_price ?? firstVariantPrice ?? 0,
+      );
+
+      const product = await prisma.product.upsert({
+        where: { slug }, // slug is unique, use it as the upsert key
+        update: {
+          name,
+          category,
+          images: imageUrl ? [imageUrl] : [],
+          price: retailPrice,
+          brand: 'Printful',
+          description: detailed?.sync_product?.description ?? '',
+        },
+        create: {
+          name,
+          slug,
+          category,
+          images: imageUrl ? [imageUrl] : [],
+          brand: 'Printful',
+          description: detailed?.sync_product?.description ?? '',
+          stock: 9999,
+          price: retailPrice,
+        },
+      });
+
+      for (const v of syncVariants) {
+        const variantRetailPrice = Number(
+          v.retail_price ?? retailPrice ?? 0,
+        );
+
+        // Try to derive color / size names from Printful variant options
+        let colorId: string | undefined;
+        let sizeId: string | undefined;
+
+        const options: PrintfulVariantOption[] = v.product?.options ?? [];
+        const colorOption = options.find((o) =>
+          typeof o.name === 'string'
+            ? o.name.toLowerCase() === 'color'
+            : o.type === 'color',
+        );
+        const sizeOption = options.find((o) =>
+          typeof o.name === 'string'
+            ? o.name.toLowerCase() === 'size'
+            : o.type === 'size',
+        );
+
+        if (colorOption?.value) {
+          const colorName = String(colorOption.value);
+          const colorSlug = colorName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const color = await prisma.color.upsert({
+            where: { slug: colorSlug },
+            update: {},
+            create: { name: colorName, slug: colorSlug },
+          });
+          colorId = color.id;
+        }
+
+        if (sizeOption?.value) {
+          const sizeName = String(sizeOption.value);
+          const sizeSlug = sizeName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const size = await prisma.size.upsert({
+            where: { slug: sizeSlug },
+            update: {},
+            create: { name: sizeName, slug: sizeSlug },
+          });
+          sizeId = size.id;
+        }
+
+        // Fallback: if color/size options are not present, try to parse from variant name.
+        // Many Printful variants use a pattern like "Product Name / Color / Size".
+        if ((!colorId || !sizeId) && v.name) {
+          const parts = String(v.name)
+            .split(/[\/,-]/)
+            .map((p: string) => p.trim())
+            .filter(Boolean);
+
+          // If we have at least 3 parts, assume: [ProductName, Color, Size]
+          if (!colorId && parts.length >= 3) {
+            const colorName = parts[parts.length - 2];
+            const colorSlug = colorName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const color = await prisma.color.upsert({
+              where: { slug: colorSlug },
+              update: {},
+              create: { name: colorName, slug: colorSlug },
+            });
+            colorId = color.id;
+          }
+
+          // Last part is most likely the size
+          if (!sizeId && parts.length >= 2) {
+            const sizeName = parts[parts.length - 1];
+            const sizeSlug = sizeName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+            const size = await prisma.size.upsert({
+              where: { slug: sizeSlug },
+              update: {},
+              create: { name: sizeName, slug: sizeSlug },
+            });
+            sizeId = size.id;
+          }
+        }
+
+        // Prefer per-variant garment thumbnail; fall back to design preview if needed
+        const variantImage: string | undefined =
+          v.product?.thumbnail_url || (v.files && v.files[0]?.preview_url);
+
+        await prisma.productVariant.upsert({
+          where: { sku: v.sku ?? undefined },
+          update: {
+            price: variantRetailPrice,
+            images: variantImage ? [variantImage] : [],
+            colorId,
+            sizeId,
+          },
+          create: {
+            productId: product.id,
+            sku: v.sku,
+            price: variantRetailPrice,
+            stock: 9999,
+            images: variantImage ? [variantImage] : [],
+            colorId,
+            sizeId,
+          },
+        });
+      }
+    }
+
+    revalidatePath('/admin/products');
+    revalidatePath('/search');
+    revalidatePath('/');
+
+    return { success: true, message: 'Products synced from Printful' };
+  } catch (error) {
+    return { success: false, message: formatError(error) };
+  }
 }
 
 // Get single product by it's slug

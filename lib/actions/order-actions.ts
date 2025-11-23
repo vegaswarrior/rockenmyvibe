@@ -3,7 +3,7 @@ import { convertToPlainObject, formatError } from '../utils';
 import { auth } from '@/auth';
 import { getMyCart } from './cart.actions';
 import { getUserById } from './user.actions';
-import { insertOrderSchema } from '../validators';
+import { insertOrderSchema, shippingAddressSchema } from '../validators';
 import { prisma } from '@/db/prisma';
 import { CartItem, PaymentResult, ShippingAddress } from '@/types';
 import { paypal } from '../paypal';
@@ -122,6 +122,40 @@ export async function getOrderById(orderId: string) {
   };
 
   return convertToPlainObject(convertedData);
+}
+
+// Update order shipping address
+export async function updateOrderShippingAddress(orderId: string, data: ShippingAddress) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return { success: false, message: 'Not authenticated' };
+    }
+
+    const order = await prisma.order.findFirst({ where: { id: orderId } });
+    if (!order) {
+      return { success: false, message: 'Order not found' };
+    }
+
+    if (order.userId !== session.user.id && session.user.role !== 'admin') {
+      return { success: false, message: 'Not authorized to update this order' };
+    }
+
+    const validatedAddress = shippingAddressSchema.parse(data);
+
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { shippingAddress: validatedAddress },
+    });
+
+    revalidatePath(`/order/${orderId}`);
+    revalidatePath('/admin/orders');
+
+    return { success: true, message: 'Shipping address updated successfully' };
+  } catch (error) {
+    return { success: false, message: formatError(error) };
+  }
 }
 
 // Create new PayPal order
